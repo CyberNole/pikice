@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Odloži telefon</title>
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  /* Ena sama bela ploskev čez cel zaslon; pikice na platnu, besedilo pritrjeno spodaj. Namenoma samo svetla tema. */
+  :root {
+    --papir: #ffffff;
+    --crnilo: #111111;
+    --tiho: #6b6b6b;
+    --font-tekst: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-stevke: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--papir);
+    color: var(--crnilo);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .spodaj {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 2s ease;
+  }
+  .sporocilo {
+    font-family: var(--font-tekst);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--tiho);
+    text-wrap: balance;
+  }
+  .ura {
+    font-family: var(--font-stevke);
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.06em;
+    color: var(--crnilo);
+  }
+  .konec {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    text-align: center;
+    font-family: var(--font-tekst);
+    opacity: 0;
+    transition: opacity 2s ease;
+    pointer-events: none;
+  }
+  .konec.vidno { opacity: 1; }
+  .konec h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 500;
+    text-wrap: balance;
+  }
+  .konec p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--tiho);
+    max-width: 30ch;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spodaj, .konec { transition: none; }
+  }
+</style>
+
+</head>
+<body>
+<canvas id="platno" aria-hidden="true"></canvas>
+
+<div class="spodaj" id="spodaj">
+  <div class="sporocilo">Odloži telefon za 10 minut.</div>
+  <div class="ura" id="ura" role="timer" aria-live="off">10:00</div>
+</div>
+
+<div class="konec" id="konec" aria-live="polite">
+  <h1>Lahko greš.</h1>
+  <p>Deset minut je mimo. Pikice so odšle počivat.</p>
+</div>
+
+<script>
+(function () {
+  const TRAJANJE_MS = 10 * 60 * 1000;
+  const KLJUC = "pikice-zacetek";
+  const STEVILO = 140;
+
+  // Začetek se zapomni v brskalniku, zato osvežitev strani ure ne vrne na 10:00.
+  let zacetek = Date.now();
+  try {
+    const shranjen = Number(localStorage.getItem(KLJUC));
+    if (shranjen && Date.now() - shranjen < TRAJANJE_MS) {
+      zacetek = shranjen;
+    } else {
+      localStorage.setItem(KLJUC, String(zacetek));
+    }
+  } catch (e) {}
+
+  const platno = document.getElementById("platno");
+  const ctx = platno.getContext("2d");
+  const uraEl = document.getElementById("ura");
+  const spodaj = document.getElementById("spodaj");
+  const konecEl = document.getElementById("konec");
+  const manjGibanja = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let w = 0, h = 0, dpr = 1;
+  function velikost() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    w = window.innerWidth;
+    h = window.innerHeight;
+    platno.width = Math.round(w * dpr);
+    platno.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  velikost();
+  window.addEventListener("resize", velikost);
+
+  // Pikice: drobne, vsaka s svojo smerjo, ki počasi zavija.
+  const pikice = [];
+  for (let i = 0; i < STEVILO; i++) {
+    pikice.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: 0.6 + Math.random() * 1.1,
+      kot: Math.random() * Math.PI * 2,
+      hitrost: 0.15 + Math.random() * 0.35,
+      zavoj: (Math.random() - 0.5) * 0.02,
+      vx: 0, vy: 0
+    });
+  }
+
+  // Dotik pikice odrine — edino, kar lahko narediš.
+  let dotik = null;
+  function nastaviDotik(ev) {
+    const t = ev.touches ? ev.touches[0] : ev;
+    if (t) dotik = { x: t.clientX, y: t.clientY, cas: performance.now() };
+  }
+  ["touchstart", "touchmove", "pointerdown", "pointermove"].forEach(function (ime) {
+    window.addEventListener(ime, function (ev) {
+      if (ev.cancelable) ev.preventDefault();
+      if (ime === "pointermove" && ev.buttons === 0 && ev.pointerType === "mouse") return;
+      nastaviDotik(ev);
+    }, { passive: false });
+  });
+  window.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+  window.addEventListener("gesturestart", function (ev) { ev.preventDefault(); });
+
+  // Prvi dotik poskusi celozaslonski način (Android ga dovoli, iPhone ne).
+  function celZaslon() {
+    const el = document.documentElement;
+    const zahteva = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (zahteva && !document.fullscreenElement) {
+      try { const p = zahteva.call(el); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    }
+    try { if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(function () {}); } catch (e) {}
+  }
+  window.addEventListener("pointerdown", celZaslon);
+  window.addEventListener("touchend", celZaslon);
+
+  let prozornost = 1;
+  let konec = false;
+
+  function oblikuj(ms) {
+    const s = Math.ceil(ms / 1000);
+    const m = Math.floor(s / 60);
+    return String(m).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function sličica() {
+    const ostane = Math.max(0, TRAJANJE_MS - (Date.now() - zacetek));
+    uraEl.textContent = oblikuj(ostane);
+
+    if (ostane === 0 && !konec) {
+      konec = true;
+      spodaj.style.opacity = "0";
+      konecEl.classList.add("vidno");
+      try { localStorage.removeItem(KLJUC); } catch (e) {}
+      try { if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+    }
+    if (konec) prozornost = Math.max(0, prozornost - 0.01);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(17,17,17," + prozornost.toFixed(3) + ")";
+    const zdaj = performance.now();
+    const potiskTraja = dotik && zdaj - dotik.cas < 600;
+
+    for (const p of pikice) {
+      if (!manjGibanja) {
+        p.zavoj += (Math.random() - 0.5) * 0.004;
+        p.zavoj = Math.max(-0.03, Math.min(0.03, p.zavoj));
+        p.kot += p.zavoj;
+      }
+      if (potiskTraja) {
+        const dx = p.x - dotik.x, dy = p.y - dotik.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < 120 * 120 && d2 > 1) {
+          const d = Math.sqrt(d2);
+          const sila = (1 - d / 120) * 1.6;
+          p.vx += (dx / d) * sila;
+          p.vy += (dy / d) * sila;
+        }
+      }
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      const k = manjGibanja ? 0.3 : 1;
+      p.x += (Math.cos(p.kot) * p.hitrost + p.vx) * k;
+      p.y += (Math.sin(p.kot) * p.hitrost + p.vy) * k;
+
+      if (p.x < -4) p.x = w + 4; else if (p.x > w + 4) p.x = -4;
+      if (p.y < -4) p.y = h + 4; else if (p.y > h + 4) p.y = -4;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    requestAnimationFrame(sličica);
+  }
+  requestAnimationFrame(sličica);
+})();
+</script>
+
+</body>
+</html>
