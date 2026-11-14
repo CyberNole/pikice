@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Slika</title>
+<meta name="theme-color" content="#ffffff">
+<style>
+  html, body { height: 100%; margin: 0; background: #ffffff; }
+</style>
+<script>
+  // Naključno izbere eno od šal in nanjo preusmeri brez vnosa v zgodovino.
+  (function () {
+    var iphone = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var sale = ["./", "zapri.html", "posodobitev.html", "crno.html", "razpoka.html", "muha.html"];
+    // Lažne vrstice Safarija so prepričljive samo na iPhonu.
+    if (iphone) sale.push("vrstice.html");
+    var izbira = sale[Math.floor(Math.random() * sale.length)];
+    location.replace(izbira);
+  })();
+</script>
+</head>
+<body>
+<noscript><a href="zapri.html">Odpri</a></noscript>
+</body>
+</html>

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Nalaganje</title>
+<meta name="theme-color" content="#f6f6f7">
+<style>
+  /* Stran, ki se »nalaga«; čez njo leze narisana muha na platnu. */
+  :root {
+    --ozadje: #f6f6f7;
+    --tekst: #1d1d1f;
+    --tiho: #86868b;
+    --tir: #dcdce0;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  html, body {
+    height: 100%; margin: 0; overflow: hidden;
+    background: var(--ozadje); color: var(--tekst); font-family: var(--font);
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  .nalaganje {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    color: var(--tiho); font-size: 14px;
+  }
+  .kolo {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2.5px solid var(--tir); border-top-color: var(--tiho);
+    animation: vrti 0.9s linear infinite;
+  }
+  @keyframes vrti { to { transform: rotate(360deg); } }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .sporocilo {
+    position: fixed; left: 50%; bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    padding: 10px 16px; border-radius: 14px;
+    background: rgba(29,29,31,0.88); color: #fff;
+    font-size: 15px; font-weight: 500; text-align: center;
+    opacity: 0; transition: opacity 0.4s ease; pointer-events: none;
+  }
+  .sporocilo.vidno { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .kolo { animation-duration: 3s; } }
+</style>
+</head>
+<body>
+<div class="nalaganje" aria-hidden="true"><div class="kolo"></div><div>Nalaganje …</div></div>
+<canvas id="platno" aria-hidden="true"></canvas>
+<div class="sporocilo" id="sporocilo" role="status"></div>
+<script>
+(function () {
+  const platno = document.getElementById("platno");
+  const ctx = platno.getContext("2d");
+  const sporocilo = document.getElementById("sporocilo");
+  const POSKUSOV_DO_ULOVA = 15;
+
+  let w = 0, h = 0, dpr = 1;
+  function velikost() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    w = window.innerWidth; h = window.innerHeight;
+    platno.width = Math.round(w * dpr); platno.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  velikost();
+  window.addEventListener("resize", velikost);
+
+  // Stanja muhe: "leze", "stoji" (in si mane tačke), "leti", "zmeckana".
+  const muha = { x: 0, y: 0, kot: 0, stanje: "leti", cilj: null, do: 0, faza: 0, hitrost: 0 };
+  let poskusov = 0;
+  const madezi = [];
+
+  function nakljucnoMesto() {
+    return { x: 30 + Math.random() * (w - 60), y: 60 + Math.random() * (h - 140) };
+  }
+
+  function prileti() {
+    // Prileti z roba.
+    const stran = Math.floor(Math.random() * 4);
+    muha.x = stran === 0 ? -20 : stran === 1 ? w + 20 : Math.random() * w;
+    muha.y = stran === 2 ? -20 : stran === 3 ? h + 20 : Math.random() * h;
+    muha.stanje = "leti";
+    muha.cilj = nakljucnoMesto();
+    muha.hitrost = 7;
+  }
+
+  function odleti(odX, odY) {
+    // Leti na mesto čim dlje od prsta.
+    let naj = null, najd = -1;
+    for (let i = 0; i < 10; i++) {
+      const m = nakljucnoMesto();
+      const d = Math.hypot(m.x - odX, m.y - odY);
+      if (d > najd) { najd = d; naj = m; }
+    }
+    muha.stanje = "leti";
+    muha.cilj = naj;
+    muha.hitrost = 11 + Math.random() * 4;
+  }
+
+  function naslednjeStanje(zdaj) {
+    if (Math.random() < 0.45) {
+      muha.stanje = "stoji";
+      muha.do = zdaj + 600 + Math.random() * 2200;
+    } else if (Math.random() < 0.2) {
+      muha.stanje = "leti";
+      muha.cilj = nakljucnoMesto();
+      muha.hitrost = 6 + Math.random() * 3;
+    } else {
+      muha.stanje = "leze";
+      muha.do = zdaj + 500 + Math.random() * 1500;
+      muha.kot += (Math.random() - 0.5) * 2.2;
+    }
+  }
+
+  function posodobi(zdaj) {
+    muha.faza += 1;
+    if (muha.stanje === "leti") {
+      const dx = muha.cilj.x - muha.x, dy = muha.cilj.y - muha.y;
+      const d = Math.hypot(dx, dy);
+      // Muhe ne letijo naravnost: malo cikcaka.
+      const zeleni = Math.atan2(dy, dx) + Math.sin(muha.faza * 0.35) * 0.5;
+      muha.kot = zeleni;
+      const k = Math.min(muha.hitrost, d);
+      muha.x += Math.cos(zeleni) * k;
+      muha.y += Math.sin(zeleni) * k;
+      if (d < 6) naslednjeStanje(zdaj);
+    } else if (muha.stanje === "leze") {
+      // Leze v sunkih.
+      if (muha.faza % 14 < 9) {
+        muha.kot += (Math.random() - 0.5) * 0.25;
+        muha.x += Math.cos(muha.kot) * 0.9;
+        muha.y += Math.sin(muha.kot) * 0.9;
+      }
+      if (muha.x < 20 || muha.x > w - 20 || muha.y < 50 || muha.y > h - 60) {
+        muha.kot = Math.atan2(h / 2 - muha.y, w / 2 - muha.x);
+      }
+      if (zdaj > muha.do) naslednjeStanje(zdaj);
+    } else if (muha.stanje === "stoji") {
+      if (zdaj > muha.do) naslednjeStanje(zdaj);
+    }
+  }
+
+  function narisiMuho() {
+    const s = 1;
+    ctx.save();
+    ctx.translate(muha.x, muha.y);
+    ctx.rotate(muha.kot);
+    ctx.scale(1.6, 1.6);
+    const leti = muha.stanje === "leti";
+    const mane = muha.stanje === "stoji" && Math.floor(muha.faza / 6) % 2 === 0;
+
+    // Senca.
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.beginPath(); ctx.ellipse(leti ? 6 : 1.5, leti ? 8 : 2, 9 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Noge (tri pari).
+    if (!leti) {
+      ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 0.9; ctx.lineCap = "round";
+      const migaj = muha.stanje === "leze" ? Math.sin(muha.faza * 0.9) * 1.5 : 0;
+      [[3, 1], [-0.5, 1], [-4, 1], [3, -1], [-0.5, -1], [-4, -1]].forEach(function (n, i) {
+        const zx = n[0], st = n[1];
+        let kx = zx + (i % 3 === 0 ? 4 : i % 3 === 1 ? 0 : -4);
+        let ky = st * 7.5;
+        if (i % 3 === 0 && mane) { kx += 2; ky = st * 3; }
+        kx += (i % 2 ? migaj : -migaj);
+        ctx.beginPath(); ctx.moveTo(zx, st * 2); ctx.quadraticCurveTo(zx + (kx - zx) * 0.5, st * 6, kx, ky); ctx.stroke();
+      });
+    }
+
+    // Krila.
+    const odpiranje = leti ? (Math.sin(muha.faza * 2.4) * 0.6 + 0.5) : 0.18;
+    ctx.fillStyle = leti ? "rgba(200,210,225,0.35)" : "rgba(200,210,225,0.55)";
+    ctx.strokeStyle = "rgba(90,100,120,0.5)"; ctx.lineWidth = 0.5;
+    [-1, 1].forEach(function (st) {
+      ctx.save();
+      ctx.translate(-1, st * 1);
+      ctx.rotate(Math.PI + st * odpiranje);
+      ctx.beginPath(); ctx.ellipse(6.5, 0, 7, 3, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    });
+
+    // Zadek, oprsje, glava.
+    ctx.fillStyle = "#22252b";
+    ctx.beginPath(); ctx.ellipse(-4.5, 0, 5.5, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(120,140,110,0.35)";
+    ctx.beginPath(); ctx.ellipse(-5, 0, 3.5, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2e3138";
+    ctx.beginPath(); ctx.ellipse(1.5, 0, 3.6, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath(); ctx.arc(5.5, 0, 2.4, 0, Math.PI * 2); ctx.fill();
+    // Rdeče oči.
+    ctx.fillStyle = "#7a1f1a";
+    ctx.beginPath(); ctx.ellipse(6, -1.8, 1.5, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(6, 1.8, 1.5, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function narisiMadez(m) {
+    ctx.save();
+    ctx.translate(m.x, m.y);
+    ctx.scale(1.6, 1.6);
+    ctx.fillStyle = "rgba(60,45,30,0.55)";
+    m.kapljice.forEach(function (k) { ctx.beginPath(); ctx.arc(k[0], k[1], k[2], 0, Math.PI * 2); ctx.fill(); });
+    ctx.fillStyle = "#22252b";
+    ctx.beginPath(); ctx.ellipse(0, 0, 6, 3, m.kot, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(160,170,185,0.7)"; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.ellipse(5, 4, 6, 2.5, 0.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(-5, 5, 5, 2, -0.9, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function sporoci(besedilo, trajanje) {
+    sporocilo.textContent = besedilo;
+    sporocilo.classList.add("vidno");
+    clearTimeout(sporoci.ura);
+    sporoci.ura = setTimeout(function () { sporocilo.classList.remove("vidno"); }, trajanje);
+  }
+
+  function dotik(px, py) {
+    if (muha.stanje === "zmeckana") return;
+    const d = Math.hypot(px - muha.x, py - muha.y);
+    if (d > 90) return;
+    poskusov++;
+    if (poskusov >= POSKUSOV_DO_ULOVA && d < 45) {
+      muha.stanje = "zmeckana";
+      const kapljice = [];
+      for (let i = 0; i < 9; i++) {
+        const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 9;
+        kapljice.push([Math.cos(a) * r, Math.sin(a) * r, 0.8 + Math.random() * 2.2]);
+      }
+      madezi.push({ x: muha.x, y: muha.y, kot: muha.kot, kapljice: kapljice });
+      if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) {} }
+      sporoci("Bravo. Muha je bila lažna. Madež pa je pravi.", 4500);
+      setTimeout(function () {
+        sporoci("Hecam se, tudi madež je lažen.", 3500);
+        madezi.length = 0;
+        poskusov = 0;
+        prileti();
+      }, 6000);
+      return;
+    }
+    odleti(px, py);
+  }
+
+  function slicica(zdaj) {
+    if (muha.stanje !== "zmeckana") posodobi(zdaj);
+    ctx.clearRect(0, 0, w, h);
+    madezi.forEach(narisiMadez);
+    if (muha.stanje !== "zmeckana") narisiMuho();
+    requestAnimationFrame(slicica);
+  }
+
+  // Muha prileti šele po nekaj sekundah, ko prijatelj že čaka na »nalaganje«.
+  muha.x = -50; muha.y = -50; muha.stanje = "zmeckana";
+  setTimeout(prileti, 2500);
+  requestAnimationFrame(slicica);
+
+  function celZaslon() {
+    const el = document.documentElement;
+    const z = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (z && !document.fullscreenElement) {
+      try { const r = z.call(el); if (r && r.catch) r.catch(function () {}); } catch (e) {}
+    }
+  }
+  window.addEventListener("pointerdown", function (ev) {
+    if (ev.cancelable) ev.preventDefault();
+    dotik(ev.clientX, ev.clientY);
+  }, { passive: false });
+  window.addEventListener("touchend", celZaslon);
+  window.addEventListener("click", celZaslon);
+  ["touchmove", "gesturestart", "contextmenu"].forEach(function (ime) {
+    window.addEventListener(ime, function (ev) { if (ev.cancelable) ev.preventDefault(); }, { passive: false });
+  });
+})();
+</script>
+</body>
+</html>
