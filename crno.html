@@ -41,7 +41,7 @@
   const platno = document.getElementById("platno");
   const ctx = platno.getContext("2d");
   const napis = document.getElementById("napis");
-  const DOTIKOV_DO_KONCA = 18;
+  const DOTIKOV_DO_KONCA = 100;
   const NAPISI = [
     "Ne dotikaj se zaslona.",
     "Rekel sem, ne dotikaj se.",
@@ -88,9 +88,10 @@
     if (eksplozija) return;
     dotikov++;
     // Vsak dotik prinese več in večje pikice.
-    const n = 30 + dotikov * dotikov * 3;
-    dodaj(x, y, n, 1 + dotikov * 0.9);
-    napis.textContent = NAPISI[Math.min(NAPISI.length - 1, Math.floor(dotikov / 2))];
+    // Pri 100 dotikih: ~70 pikic na dotik, vse večjih, da je zaslon na koncu skoraj črn.
+    const n = 40 + Math.floor(dotikov * 0.6);
+    dodaj(x, y, n, 1 + dotikov * 0.15);
+    napis.textContent = NAPISI[Math.min(NAPISI.length - 1, Math.floor(dotikov / 11))];
     if (dotikov > DOTIKOV_DO_KONCA * 0.6) napis.classList.add("svetlo");
     if (navigator.vibrate) { try { navigator.vibrate(15 + dotikov * 4); } catch (e) {} }
     if (dotikov >= DOTIKOV_DO_KONCA) razleti(x, y);
