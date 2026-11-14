@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Posodabljanje</title>
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<style>
+  /* Črn zaslon, sredinski blok z napisom in tanko vrstico napredka — kot sistemska posodobitev. */
+  :root {
+    --ozadje: #000000;
+    --tekst: #f2f2f2;
+    --tiho: #8d8d93;
+    --tir: #3a3a3c;
+    --polnilo: #f2f2f2;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color-scheme: dark;
+  }
+  html, body {
+    height: 100%; margin: 0; overflow: hidden;
+    background: var(--ozadje); color: var(--tekst); font-family: var(--font);
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  .sredina {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px;
+    padding-left: max(32px, env(safe-area-inset-left, 0px));
+    padding-right: max(32px, env(safe-area-inset-right, 0px));
+    text-align: center;
+  }
+  .kolo {
+    width: 34px; height: 34px; margin-bottom: 10px;
+    border-radius: 50%;
+    border: 3px solid var(--tir);
+    border-top-color: var(--polnilo);
+    animation: vrti 1s linear infinite;
+  }
+  @keyframes vrti { to { transform: rotate(360deg); } }
+  h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  .tir {
+    width: min(64vw, 260px); height: 5px; border-radius: 3px;
+    background: var(--tir); overflow: hidden; margin-top: 6px;
+  }
+  .polnilo { height: 100%; width: 0%; background: var(--polnilo); border-radius: 3px; transition: width 0.4s linear; }
+  .vrstica { display: flex; gap: 10px; font-size: 13px; color: var(--tiho); font-variant-numeric: tabular-nums; }
+  .opozorilo { font-size: 13px; color: var(--tiho); max-width: 28ch; }
+  .namig {
+    position: fixed; left: 50%; bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    font-size: 13px; color: var(--tiho);
+    opacity: 0; transition: opacity 0.3s ease; white-space: nowrap;
+  }
+  .namig.vidno { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .kolo { animation-duration: 3s; } }
+</style>
+</head>
+<body>
+<div class="sredina">
+  <div class="kolo" aria-hidden="true"></div>
+  <h1 id="naslov">Posodabljanje programske opreme</h1>
+  <div class="tir" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="tir"><div class="polnilo" id="polnilo"></div></div>
+  <div class="vrstica"><span id="odstotek">0 %</span><span>·</span><span id="cas">Preostalo: približno 2 min</span></div>
+  <div class="opozorilo" id="opozorilo">Ne izklapljaj telefona in ne zapiraj tega zaslona.</div>
+</div>
+<div class="namig" id="namig" role="status">Prosim, počakaj.</div>
+<script>
+(function () {
+  const polnilo = document.getElementById("polnilo");
+  const tir = document.getElementById("tir");
+  const odstotekEl = document.getElementById("odstotek");
+  const casEl = document.getElementById("cas");
+  const naslov = document.getElementById("naslov");
+  const opozorilo = document.getElementById("opozorilo");
+  const namig = document.getElementById("namig");
+
+  let p = 0;          // odstotek
+  let krog = 0;       // kolikokrat se je že vrnilo nazaj
+  let obstal = 0;     // koliko korakov stoji pri 99 %
+  let minute = 4;
+
+  const NAZAJ = [12, 34, 7, 61, 3];
+  const SPOROCILA = [
+    "Posodabljanje programske opreme",
+    "Preverjanje posodobitve",
+    "Nameščanje posodobitve",
+    "Ponovni poskus namestitve",
+    "Skoraj končano"
+  ];
+
+  function izpisi() {
+    const z = Math.floor(p);
+    polnilo.style.width = z + "%";
+    tir.setAttribute("aria-valuenow", String(z));
+    odstotekEl.textContent = z + " %";
+    casEl.textContent = "Preostalo: približno " + minute + " min";
+  }
+
+  function korak() {
+    if (p < 99) {
+      // Hitro na začetku, vse počasneje proti koncu.
+      const hitrost = p < 60 ? 1.6 : p < 90 ? 0.7 : 0.25;
+      p = Math.min(99, p + Math.random() * hitrost * 2);
+      minute = Math.max(1, Math.ceil((99 - p) / 25));
+    } else {
+      obstal++;
+      if (obstal === 10) casEl.textContent = "Preostalo: računanje …";
+      if (obstal > 18) {
+        // Pri 99 % skoči nazaj.
+        p = NAZAJ[krog % NAZAJ.length];
+        krog++;
+        obstal = 0;
+        naslov.textContent = SPOROCILA[krog % SPOROCILA.length];
+        if (krog === 3) opozorilo.textContent = "Prišlo je do napake. Začenjam znova.";
+        if (krog === 5) opozorilo.textContent = "Ne izklapljaj telefona in ne zapiraj tega zaslona.";
+        if (krog >= 7) {
+          naslov.textContent = "Hecam se.";
+          opozorilo.textContent = "Nič se ni posodabljalo. Lep pozdrav.";
+          casEl.textContent = "";
+          p = 100;
+          izpisi();
+          return;
+        }
+      }
+    }
+    if (obstal < 10) izpisi();
+    setTimeout(korak, 450 + Math.random() * 500);
+  }
+  izpisi();
+  setTimeout(korak, 900);
+
+  let namigUra = null;
+  function celZaslon() {
+    const el = document.documentElement;
+    const z = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (z && !document.fullscreenElement) {
+      try { const r = z.call(el); if (r && r.catch) r.catch(function () {}); } catch (e) {}
+    }
+  }
+  window.addEventListener("pointerdown", function (ev) {
+    if (ev.cancelable) ev.preventDefault();
+    namig.classList.add("vidno");
+    clearTimeout(namigUra);
+    namigUra = setTimeout(function () { namig.classList.remove("vidno"); }, 1400);
+  }, { passive: false });
+  window.addEventListener("touchend", celZaslon);
+  window.addEventListener("click", celZaslon);
+  ["touchmove", "gesturestart", "contextmenu"].forEach(function (ime) {
+    window.addEventListener(ime, function (ev) { if (ev.cancelable) ev.preventDefault(); }, { passive: false });
+  });
+})();
+</script>
+</body>
+</html>

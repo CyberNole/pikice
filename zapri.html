@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Zapri</title>
+<meta name="theme-color" content="#f4f4f6">
+<style>
+  /* Svetla ploskev, en temen gumb, ki beži pred prstom. */
+  :root {
+    --ozadje: #f4f4f6;
+    --gumb: #16161a;
+    --gumb-tekst: #ffffff;
+    --tiho: #7a7a85;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  html, body {
+    height: 100%; margin: 0; overflow: hidden;
+    background: var(--ozadje); color: var(--gumb); font-family: var(--font);
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  .gumb {
+    position: fixed;
+    left: 0; top: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--gumb);
+    color: var(--gumb-tekst);
+    font: 600 18px/1 var(--font);
+    letter-spacing: 0.12em;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    display: grid; place-items: center;
+    transition: transform 0.28s cubic-bezier(.2,.9,.25,1.2), opacity 0.25s ease;
+    will-change: transform;
+  }
+  .gumb:focus-visible { outline: 3px solid #5b8cff; outline-offset: 3px; }
+  .vrh {
+    position: fixed; left: 0; right: 0;
+    top: calc(28px + env(safe-area-inset-top, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    text-align: center; font-size: 15px; color: var(--tiho);
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .konec {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.8s ease;
+  }
+  .konec.vidno { opacity: 1; }
+  .konec h1 { margin: 0; font-size: 26px; font-weight: 700; text-wrap: balance; }
+  .konec p { margin: 0; font-size: 15px; color: var(--tiho); }
+  @media (prefers-reduced-motion: reduce) { .gumb { transition: opacity 0.25s ease; } }
+</style>
+</head>
+<body>
+<div class="vrh" id="vrh">Za izhod pritisni ZAPRI.</div>
+<div id="oder"></div>
+<div class="konec" id="konec" aria-live="polite">
+  <h1>Ujet si bil. Lep pozdrav.</h1>
+  <p>Zdaj lahko greš. Prav zares.</p>
+</div>
+<script>
+(function () {
+  const oder = document.getElementById("oder");
+  const vrh = document.getElementById("vrh");
+  const konecEl = document.getElementById("konec");
+  const NAJVEC = 8;
+  const NAPISI = ["Za izhod pritisni ZAPRI.", "Skoraj!", "Hitreje.", "Ups.", "Ojoj, dva sta.", "Ta je pa hiter.", "Ne obupaj.", "Še malo."];
+  let gumbi = [];
+  let poskusov = 0;
+  let konec = false;
+
+  function nov(sirina, x, y) {
+    const g = document.createElement("button");
+    g.type = "button";
+    g.className = "gumb";
+    g.textContent = "ZAPRI";
+    const s = { el: g, w: sirina, h: Math.round(sirina * 0.36), x: x, y: y };
+    g.style.width = s.w + "px";
+    g.style.height = s.h + "px";
+    g.style.fontSize = Math.max(11, Math.round(sirina * 0.11)) + "px";
+    oder.appendChild(g);
+    postavi(s);
+    gumbi.push(s);
+    return s;
+  }
+
+  function meje(s) {
+    const r = 12;
+    return {
+      x0: r, y0: r + 60,
+      x1: Math.max(r, window.innerWidth - s.w - r),
+      y1: Math.max(r + 60, window.innerHeight - s.h - r - 20)
+    };
+  }
+
+  function postavi(s) {
+    const m = meje(s);
+    s.x = Math.min(m.x1, Math.max(m.x0, s.x));
+    s.y = Math.min(m.y1, Math.max(m.y0, s.y));
+    s.el.style.transform = "translate(" + s.x + "px," + s.y + "px)";
+  }
+
+  // Skoči na naključno mesto, čim dlje od prsta.
+  function skoci(s, px, py) {
+    const m = meje(s);
+    let najx = s.x, najy = s.y, najd = -1;
+    for (let i = 0; i < 12; i++) {
+      const x = m.x0 + Math.random() * (m.x1 - m.x0);
+      const y = m.y0 + Math.random() * (m.y1 - m.y0);
+      const d = Math.hypot(x + s.w / 2 - px, y + s.h / 2 - py);
+      if (d > najd) { najd = d; najx = x; najy = y; }
+    }
+    s.x = najx; s.y = najy;
+    postavi(s);
+  }
+
+  function blizu(s, px, py, rob) {
+    return px > s.x - rob && px < s.x + s.w + rob && py > s.y - rob && py < s.y + s.h + rob;
+  }
+
+  function razdeli(s) {
+    gumbi = gumbi.filter(function (g) { return g !== s; });
+    s.el.remove();
+    const w = Math.max(70, Math.round(s.w * 0.78));
+    nov(w, s.x, s.y);
+    nov(w, s.x + 40, s.y + 40);
+    gumbi.slice(-2).forEach(function (g) { skoci(g, s.x, s.y); });
+  }
+
+  function koncaj() {
+    konec = true;
+    gumbi.forEach(function (g) { g.el.style.opacity = "0"; });
+    vrh.style.opacity = "0";
+    konecEl.classList.add("vidno");
+    try { if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  }
+
+  function dotik(px, py) {
+    if (konec) return;
+    for (const s of gumbi.slice()) {
+      if (!blizu(s, px, py, 30)) continue;
+      poskusov++;
+      if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) {} }
+      // Vsak peti poskus ga »ujame« — a takrat se razdeli.
+      if (poskusov % 5 === 0) {
+        razdeli(s);
+        if (gumbi.length >= NAJVEC) { setTimeout(koncaj, 600); }
+      } else {
+        skoci(s, px, py);
+      }
+      vrh.textContent = NAPISI[Math.min(NAPISI.length - 1, Math.floor(poskusov / 3))];
+      break;
+    }
+  }
+
+  window.addEventListener("pointerdown", function (ev) {
+    if (ev.cancelable) ev.preventDefault();
+    celZaslon();
+    dotik(ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  // Z miško beži že, ko se kazalec približa.
+  window.addEventListener("pointermove", function (ev) {
+    if (konec || ev.pointerType !== "mouse") return;
+    for (const s of gumbi) {
+      if (blizu(s, ev.clientX, ev.clientY, 40)) { skoci(s, ev.clientX, ev.clientY); }
+    }
+  });
+  window.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      const s = gumbi[0];
+      if (s) dotik(s.x + s.w / 2, s.y + s.h / 2);
+    }
+  });
+
+  function celZaslon() {
+    const el = document.documentElement;
+    const z = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (z && !document.fullscreenElement && !konec) {
+      try { const p = z.call(el); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    }
+  }
+  ["touchmove", "gesturestart", "contextmenu"].forEach(function (ime) {
+    window.addEventListener(ime, function (ev) { if (ev.cancelable) ev.preventDefault(); }, { passive: false });
+  });
+  window.addEventListener("resize", function () { gumbi.forEach(postavi); });
+
+  const w0 = Math.min(220, window.innerWidth * 0.55);
+  nov(Math.round(w0), (window.innerWidth - w0) / 2, window.innerHeight / 2 - 40);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Fotografija</title>
+<meta name="theme-color" content="#0d1422">
+<style>
+  /* Temno ozadje z uro (kot zaklenjen zaslon); razpoke se rišejo na platno čez vse. */
+  :root {
+    --nebo-vrh: #0d1422;
+    --nebo-sred: #24324f;
+    --nebo-dno: #5a4a6b;
+    --tekst: #ffffff;
+    --tiho: rgba(255,255,255,0.72);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color-scheme: dark;
+  }
+  html, body {
+    height: 100%; margin: 0; overflow: hidden;
+    background: var(--nebo-vrh); color: var(--tekst); font-family: var(--font);
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  .ozadje {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(120% 70% at 20% 85%, rgba(255,170,120,0.35), transparent 60%),
+      radial-gradient(90% 60% at 85% 20%, rgba(120,150,255,0.25), transparent 60%),
+      linear-gradient(180deg, var(--nebo-vrh), var(--nebo-sred) 55%, var(--nebo-dno));
+  }
+  .ura {
+    position: fixed; left: 0; right: 0;
+    top: calc(14vh + env(safe-area-inset-top, 0px));
+    text-align: center;
+  }
+  .datum { font-size: 18px; font-weight: 500; color: var(--tiho); }
+  .cas { font-size: 86px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .spodaj {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+    text-align: center; font-size: 14px; color: var(--tiho);
+    transition: opacity 0.3s ease;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .bel {
+    position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none;
+  }
+  .bel.blisk { animation: blisk 0.35s ease-out; }
+  @keyframes blisk { 0% { opacity: 0.55; } 100% { opacity: 0; } }
+  .razkritje {
+    position: fixed; left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    padding: 10px 16px; border-radius: 14px;
+    background: rgba(0,0,0,0.6); color: #fff; font-size: 15px; font-weight: 500;
+    white-space: nowrap; opacity: 0; transition: opacity 0.6s ease; pointer-events: none;
+  }
+  .razkritje.vidno { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .bel.blisk { animation: none; } }
+</style>
+</head>
+<body>
+<div class="ozadje" aria-hidden="true"></div>
+<div class="ura" aria-hidden="true">
+  <div class="datum" id="datum"></div>
+  <div class="cas" id="cas"></div>
+</div>
+<div class="spodaj" id="spodaj">Tapni za ogled fotografije</div>
+<canvas id="platno" aria-hidden="true"></canvas>
+<div class="bel" id="bel"></div>
+<div class="razkritje" id="razkritje" role="status">Hecam se. Zaslon je cel.</div>
+<script>
+(function () {
+  const DNEVI = ["nedelja", "ponedeljek", "torek", "sreda", "četrtek", "petek", "sobota"];
+  const MESECI = ["januar", "februar", "marec", "april", "maj", "junij", "julij", "avgust", "september", "oktober", "november", "december"];
+  function ura() {
+    const d = new Date();
+    document.getElementById("cas").textContent = d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0");
+    document.getElementById("datum").textContent = DNEVI[d.getDay()] + ", " + d.getDate() + ". " + MESECI[d.getMonth()];
+  }
+  ura(); setInterval(ura, 5000);
+
+  const platno = document.getElementById("platno");
+  const ctx = platno.getContext("2d");
+  const bel = document.getElementById("bel");
+  const spodaj = document.getElementById("spodaj");
+  const razkritje = document.getElementById("razkritje");
+  let w = 0, h = 0, dpr = 1;
+  const razpoke = [];
+
+  function velikost() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    w = window.innerWidth; h = window.innerHeight;
+    platno.width = Math.round(w * dpr); platno.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    razpoke.forEach(narisi);
+  }
+
+  // Ena razpoka: žarki iz točke udarca, ki se lomijo in cepijo, plus nekaj krogov okoli središča.
+  function ustvari(x, y) {
+    const crte = [];
+    const zarkov = 9 + Math.floor(Math.random() * 6);
+    const dolzina = Math.hypot(w, h);
+    function veja(x0, y0, kot, dolz, debelina, globina) {
+      let px = x0, py = y0, prehod = 0;
+      const tocke = [[px, py]];
+      while (prehod < dolz) {
+        const korak = 14 + Math.random() * 30;
+        kot += (Math.random() - 0.5) * 0.45;
+        px += Math.cos(kot) * korak; py += Math.sin(kot) * korak;
+        prehod += korak;
+        tocke.push([px, py]);
+        if (globina < 3 && Math.random() < 0.09) {
+          veja(px, py, kot + (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6), dolz * (0.25 + Math.random() * 0.3), debelina * 0.6, globina + 1);
+        }
+        if (px < -20 || px > w + 20 || py < -20 || py > h + 20) break;
+      }
+      crte.push({ tocke: tocke, debelina: debelina });
+    }
+    for (let i = 0; i < zarkov; i++) {
+      const kot = (i / zarkov) * Math.PI * 2 + Math.random() * 0.5;
+      veja(x, y, kot, dolzina * (0.35 + Math.random() * 0.7), 1.6, 0);
+    }
+    // Krožni odlomi okoli točke udarca.
+    const krogi = [];
+    for (let k = 0; k < 3; k++) {
+      const r = 18 + k * 26 + Math.random() * 14;
+      const tocke = [];
+      const n = 10 + k * 4;
+      for (let i = 0; i <= n; i++) {
+        if (Math.random() < 0.18) { tocke.push(null); continue; }
+        const a = (i / n) * Math.PI * 2;
+        const rr = r * (0.85 + Math.random() * 0.3);
+        tocke.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]);
+      }
+      krogi.push(tocke);
+    }
+    return { x: x, y: y, crte: crte, krogi: krogi };
+  }
+
+  function pot(tocke) {
+    ctx.beginPath();
+    let zacni = true;
+    for (const t of tocke) {
+      if (!t) { zacni = true; continue; }
+      if (zacni) { ctx.moveTo(t[0], t[1]); zacni = false; } else ctx.lineTo(t[0], t[1]);
+    }
+  }
+
+  function narisi(r) {
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    // Zdrobljeno središče.
+    const g = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, 46);
+    g.addColorStop(0, "rgba(255,255,255,0.55)");
+    g.addColorStop(0.4, "rgba(220,230,255,0.18)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(r.x, r.y, 46, 0, Math.PI * 2); ctx.fill();
+    // Temna senca pod svetlo črto da videz reže v steklu.
+    for (const c of r.crte) {
+      pot(c.tocke);
+      ctx.strokeStyle = "rgba(0,0,0,0.45)"; ctx.lineWidth = c.debelina + 1.4; ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = c.debelina * 0.6; ctx.stroke();
+    }
+    for (const k of r.krogi) {
+      pot(k);
+      ctx.strokeStyle = "rgba(0,0,0,0.4)"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 0.8; ctx.stroke();
+    }
+  }
+
+  // Zvok loma stekla: kratek šum + nekaj visokih zvončkov, vse sintetizirano.
+  let zvok = null;
+  function pocek() {
+    try {
+      zvok = zvok || new (window.AudioContext || window.webkitAudioContext)();
+      const a = zvok, t = a.currentTime;
+      const dolz = Math.floor(a.sampleRate * 0.5);
+      const buf = a.createBuffer(1, dolz, a.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < dolz; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / dolz, 4);
+      const sum = a.createBufferSource(); sum.buffer = buf;
+      const f = a.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 1800;
+      const gl = a.createGain(); gl.gain.value = 0.9;
+      sum.connect(f).connect(gl).connect(a.destination); sum.start(t);
+      for (let i = 0; i < 7; i++) {
+        const o = a.createOscillator(); const og = a.createGain();
+        o.type = "sine"; o.frequency.value = 2500 + Math.random() * 4500;
+        const z = t + 0.02 + Math.random() * 0.35;
+        og.gain.setValueAtTime(0, z); og.gain.linearRampToValueAtTime(0.12, z + 0.005);
+        og.gain.exponentialRampToValueAtTime(0.0001, z + 0.25);
+        o.connect(og).connect(a.destination); o.start(z); o.stop(z + 0.3);
+      }
+    } catch (e) {}
+  }
+
+  let razkritjeUra = null;
+  function udarec(x, y) {
+    const r = ustvari(x, y);
+    razpoke.push(r);
+    narisi(r);
+    pocek();
+    if (navigator.vibrate) { try { navigator.vibrate([40, 30, 80]); } catch (e) {} }
+    bel.classList.remove("blisk"); void bel.offsetWidth; bel.classList.add("blisk");
+    spodaj.style.opacity = "0";
+    razkritje.classList.remove("vidno");
+    clearTimeout(razkritjeUra);
+    razkritjeUra = setTimeout(function () { razkritje.classList.add("vidno"); }, 9000);
+  }
+
+  velikost();
+  window.addEventListener("resize", function () { ctx.clearRect(0, 0, w, h); velikost(); });
+
+  function celZaslon() {
+    const el = document.documentElement;
+    const z = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (z && !document.fullscreenElement) {
+      try { const p = z.call(el); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    }
+  }
+  window.addEventListener("pointerdown", function (ev) {
+    if (ev.cancelable) ev.preventDefault();
+    udarec(ev.clientX, ev.clientY);
+  }, { passive: false });
+  window.addEventListener("touchend", celZaslon);
+  window.addEventListener("click", celZaslon);
+  ["touchmove", "gesturestart", "contextmenu"].forEach(function (ime) {
+    window.addEventListener(ime, function (ev) { if (ev.cancelable) ev.preventDefault(); }, { passive: false });
+  });
+})();
+</script>
+</body>
+</html>
